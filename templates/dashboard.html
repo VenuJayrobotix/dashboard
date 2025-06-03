@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard | Client Status</title>
+  <script src="https://cdn.socket.io/4.7.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    /* Reset & base */
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%);
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: rgba(255 255 255 / 0.9);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: #1a237e;
+    }
+    header a {
+      background-color: #1a237e;
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 25px;
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(26, 35, 126, 0.5);
+      transition: background-color 0.3s ease;
+    }
+    header a:hover {
+      background-color: #3949ab;
+    }
+
+    main {
+      flex-grow: 1;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+      padding: 1.3rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: default;
+      user-select: none;
+    }
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 28px rgba(0, 0, 0, 0.25);
+    }
+
+    .client-id {
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: #1a237e;
+      margin-bottom: 0.6rem;
+      letter-spacing: 0.05em;
+    }
+
+    .status {
+      font-weight: 700;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .status-online {
+      color: #28a745;
+    }
+    .status-offline {
+      color: #dc3545;
+    }
+    .status-icon {
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+
+    .last-seen {
+      margin-top: 0.5rem;
+      font-style: italic;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    /* Scrollbar styling for main */
+    main {
+      overflow-y: auto;
+    }
+    main::-webkit-scrollbar {
+      width: 10px;
+    }
+    main::-webkit-scrollbar-track {
+      background: #f0f0f0;
+      border-radius: 10px;
+    }
+    main::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 10px;
+    }
+    main::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    @media (max-width: 500px) {
+      .card {
+        padding: 1rem 1rem;
+      }
+      .client-id {
+        font-size: 1.1rem;
+      }
+      .status {
+        font-size: 1.2rem;
+      }
+      .last-seen {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    Client Status Dashboard
+    <a href="{{ url_for('logout') }}" aria-label="Logout">Logout</a>
+  </header>
+
+  <main>
+    <div class="grid" id="clients-grid" role="list" aria-label="Clients Status List">
+      {% for client in clients %}
+      <article class="card" id="{{ client.id }}" role="listitem" tabindex="0" aria-live="polite" aria-atomic="true" aria-relevant="all">
+        <div class="client-id">{{ client.id }}</div>
+        <div class="status {% if client.status == '🟢 Online' %}status-online{% else %}status-offline{% endif %}">
+          <span class="status-icon" aria-hidden="true">{{ client.status.split(' ')[0] }}</span>
+          <span class="status-text">{{ client.status.split(' ')[1] }}</span>
+        </div>
+        <div class="last-seen" aria-label="Last seen seconds ago">
+          {% if client.last_seen_seconds_ago is not none %}
+            Last seen: {{ client.last_seen_seconds_ago }} seconds ago
+          {% else %}
+            Last seen: N/A
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </main>
+
+  <script>
+    const socket = io();
+
+    socket.on('connect', () => {
+      console.log('Connected to Socket.IO server');
+    });
+
+    socket.on('status_update', (data) => {
+      const { client_id, status } = data;
+      const card = document.getElementById(client_id);
+      if (!card) return;
+
+      // Update status text & icon
+      const statusDiv = card.querySelector('.status');
+      const iconSpan = statusDiv.querySelector('.status-icon');
+      const textSpan = statusDiv.querySelector('.status-text');
+      const lastSeenDiv = card.querySelector('.last-seen');
+
+      if (status.startsWith('🟢')) {
+        statusDiv.classList.add('status-online');
+        statusDiv.classList.remove('status-offline');
+      } else {
+        statusDiv.classList.add('status-offline');
+        statusDiv.classList.remove('status-online');
+      }
+
+      iconSpan.textContent = status.split(' ')[0];
+      textSpan.textContent = status.split(' ')[1];
+      lastSeenDiv.textContent = status.startsWith('🟢') ? 'Last seen: 0 seconds ago' : 'Last seen: N/A';
+    });
+
+    // Optional: Increment last_seen_seconds_ago for online clients every second
+    setInterval(() => {
+      const cards = document.querySelectorAll('.card');
+      cards.forEach(card => {
+        const statusDiv = card.querySelector('.status');
+        if (statusDiv.classList.contains('status-online')) {
+          const lastSeenDiv = card.querySelector('.last-seen');
+          const match = lastSeenDiv.textContent.match(/(\d+) seconds ago/);
+          if (match) {
+            let seconds = parseInt(match[1]);
+            seconds++;
+            if (seconds > 30) {
+              // Mark offline after 30 seconds locally; server will sync soon
+              statusDiv.classList.remove('status-online');
+              statusDiv.classList.add('status-offline');
+              statusDiv.querySelector('.status-icon').textContent = '🔴';
+              statusDiv.querySelector('.status-text').textContent = 'Offline';
+              lastSeenDiv.textContent = 'Last seen: N/A';
+            } else {
+              lastSeenDiv.textContent = `Last seen: ${seconds} seconds ago`;
+            }
+          }
+        }
+      });
+    }, 1000);
+  </script>
+</body>
+</html>
